@@ -1,60 +1,80 @@
 package com.houx.main;
 
-import com.houx.jedis.JedisTest;
-import com.houx.pojo.Role;
+import javafx.application.Application;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
-import org.springframework.dao.DataAccessException;
-import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.core.SessionCallback;
 
 /**
  * @Author: HouX
- * @Date: 2020/11/29
+ * @Date: 2020/11/30
  * @Description:
  */
 public class Main {
-
     public static void main(String[] args) {
-        //testJedis();
-        //testSpring();
-        testSessionCallback();
+        //testString();
+        testCal();
     }
 
-    private static void testJedis() {
-        JedisTest jedisTest = new JedisTest();
-        jedisTest.testJedis();
+    public static void testString(){
+        String file = "applicationContext.xml";
+        ApplicationContext context = new ClassPathXmlApplicationContext(file);
+        RedisTemplate redisTemplate = context.getBean(RedisTemplate.class);
+        //赋值
+        redisTemplate.opsForValue().set("key1","value1");
+        redisTemplate.opsForValue().set("key2","value2");
+        //通过key获取值
+        String value1 = (String) redisTemplate.opsForValue().get("key1");
+        System.out.println(value1);
+        //通过key删除值
+        redisTemplate.delete("key1");
+        //求长度
+        Long length = redisTemplate.opsForValue().size("key2");
+        System.out.println(length);
+        //设置新值并返回旧值
+        String oldValue2 = (String)redisTemplate.opsForValue().getAndSet("key2","new_value2");
+        System.out.println(oldValue2);
+        //通过key获取值
+        String value2 = (String) redisTemplate.opsForValue().get("key2");
+        System.out.println(value2);
+        //求子串
+        String  rangeValue2 = redisTemplate.opsForValue().get("key2",0,3);
+        System.out.println(rangeValue2);
+        //追加字符串到末尾，返回新串长度
+        int newLen = redisTemplate.opsForValue().append("key2","_app");
+        System.out.println(newLen);
+        String appendValue2 = (String) redisTemplate.opsForValue().get("key2");
+        System.out.println(appendValue2);
+
+
     }
 
-    private static void testSpring() {
-        ApplicationContext applicationContext = new ClassPathXmlApplicationContext("applicationContext.xml");
-        RedisTemplate redisTemplate = applicationContext.getBean(RedisTemplate.class);
-        Role role = new Role();
-        role.setId(1L);
-        role.setRoleName("role_name_1");
-        role.setNote("note_1");
-        redisTemplate.opsForValue().set("role_1", role);
-        Role role1 = (Role) redisTemplate.opsForValue().get("role_1");
-        System.out.println(role1.getRoleName());
+    //测试Redis运算
+    public static void testCal(){
+        String file = "applicationContext.xml";
+        ApplicationContext context = new ClassPathXmlApplicationContext(file);
+        RedisTemplate redisTemplate = context.getBean(RedisTemplate.class);
+        redisTemplate.opsForValue().set("1","9");
+        printCurrValue(redisTemplate,"i");
+        redisTemplate.opsForValue().increment("i",1);
+        printCurrValue(redisTemplate,"i");
+        redisTemplate.getConnectionFactory().getConnection().decr(redisTemplate.getKeySerializer().serialize("i"));
+        printCurrValue(redisTemplate,"i");
+        redisTemplate.getConnectionFactory().getConnection().decrBy(redisTemplate.getKeySerializer().serialize("1"),6);
+        printCurrValue(redisTemplate,"i");
+        redisTemplate.opsForValue().increment("i",2.3);
+        printCurrValue(redisTemplate,"i");
     }
 
-    private static void testSessionCallback() {
-        ApplicationContext applicationContext = new ClassPathXmlApplicationContext("applicationContext.xml");
-        RedisTemplate redisTemplate = applicationContext.getBean(RedisTemplate.class);
-        final Role role = new Role();
-        role.setId(1);
-        role.setRoleName("role_name_1");
-        role.setNote("role_note_1");
-        SessionCallback callBack = new SessionCallback<Role>() {
-            @Override
-            public Role execute(RedisOperations ops) throws DataAccessException {
-                ops.boundValueOps("role_1").set(role);
-                return (Role) ops.boundValueOps("role_1").get();
-            }
-        };
-        Role savedRole = (Role) redisTemplate.execute(callBack);
-        System.out.println(savedRole.getId());
+    /**
+     * 打印当前的值
+     * @param redisTemplate
+     * @param key
+     */
+    private static void printCurrValue(RedisTemplate redisTemplate, String key) {
+        String i = (String) redisTemplate.opsForValue().get(key);
+        System.out.println(i);
     }
+
 
 }
