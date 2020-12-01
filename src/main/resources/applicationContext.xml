@@ -21,8 +21,6 @@
         <property name="maxWaitMillis" value="20000" />
     </bean>
 
-    <bean id="stringRedisSerializer"
-          class="org.springframework.data.redis.serializer.StringRedisSerializer" />
 
 
     <bean id="connectionFactory"
@@ -31,6 +29,10 @@
         <property name="port" value="6379" />
         <property name="poolConfig" ref="poolConfig" />
     </bean>
+
+    <bean id="stringRedisSerializer"
+          class="org.springframework.data.redis.serializer.StringRedisSerializer" />
+
 
     <bean id="redisTemplate" class="org.springframework.data.redis.core.RedisTemplate">
         <property name="connectionFactory" ref="connectionFactory"/>
