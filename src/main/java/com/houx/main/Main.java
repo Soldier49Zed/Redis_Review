@@ -42,7 +42,10 @@ public class Main {
         // testTransaction();
         // testJedisPipeline();
         // testPipeline();
-        testPubSub();
+        // testPubSub();
+        testExpire();
+
+
     }
 
     public static void testJedis() {
@@ -439,12 +442,12 @@ public class Main {
         System.err.println("耗时：" + (end - start) + "毫秒");
     }
 
-    public static void testPipeline(){
-        SessionCallback callback = (SessionCallback) (RedisOperations ops)->{
-            for (int i = 0;i <100000;i++){
+    public static void testPipeline() {
+        SessionCallback callback = (SessionCallback) (RedisOperations ops) -> {
+            for (int i = 0; i < 100000; i++) {
                 int j = i + 1;
-                ops.boundValueOps("pipeline_key_" + j).set("pipeline_value_"+j);
-                ops.boundValueOps("pipeline_key_"+j).get();
+                ops.boundValueOps("pipeline_key_" + j).set("pipeline_value_" + j);
+                ops.boundValueOps("pipeline_key_" + j).get();
             }
             return null;
         };
@@ -455,9 +458,29 @@ public class Main {
         System.err.println(end - start);
     }
 
-    public static void testPubSub(){
+    public static void testPubSub() {
         String channel = "chat";
-        redisTemplate.convertAndSend(channel,"I am coming,BeiJin");
+        redisTemplate.convertAndSend(channel, "I am coming,BeiJin");
+    }
+
+
+    public static void testExpire() {
+        redisTemplate.execute((RedisOperations ops) -> {
+            ops.boundValueOps("key1").set("value1");
+            String keyValue = (String) ops.boundValueOps("key1").get();
+            Long expSecond = ops.getExpire("key1");
+            System.err.println(expSecond);
+            boolean b = false;
+            b = ops.expire("key1", 120L, TimeUnit.SECONDS);
+            b = ops.persist("key1");
+            Long l = 0L;
+            l = ops.getExpire("key1");
+            Long now = System.currentTimeMillis();
+            Date date = new Date();
+            date.setTime(now + 120000);
+            ops.expireAt("key", date);
+            return null;
+        });
     }
 
 }
