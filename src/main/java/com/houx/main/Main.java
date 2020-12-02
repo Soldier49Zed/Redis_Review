@@ -6,8 +6,13 @@ import org.springframework.data.redis.connection.RedisListCommands;
 import org.springframework.data.redis.connection.RedisZSetCommands.Limit;
 import org.springframework.data.redis.connection.RedisZSetCommands.Range;
 import org.springframework.data.redis.core.DefaultTypedTuple;
+import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
+import redis.clients.jedis.Jedis;
+import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.JedisPoolConfig;
 
 import java.io.UnsupportedEncodingException;
 import java.util.*;
@@ -19,18 +24,61 @@ import java.util.concurrent.TimeUnit;
  * @Description:
  */
 public class Main {
+
     static String file = "applicationContext.xml";
     static ApplicationContext context = new ClassPathXmlApplicationContext(file);
     static RedisTemplate redisTemplate = context.getBean(RedisTemplate.class);
 
     public static void main(String[] args) {
+        // testJedis();
         // testString();
         // testCal();
         // testRedisHash();
         // testList();
         // testBList();
         // testSet();
-        testZset();
+        // testZset();
+        testTransaction();
+    }
+
+    public static void testJedis() {
+        Jedis jedis = testPool().getResource();
+        int i = 0;// 记录操作次数
+        try {
+            long start = System.currentTimeMillis();// 开始毫秒数
+            while (true) {
+                long end = System.currentTimeMillis();
+                if (end - start >= 1000) {// 当大于等于1000毫秒（相当于1秒）时，结束操作
+                    break;
+                }
+                i++;
+                jedis.set("test" + i, i + "");
+            }
+        } finally {// 关闭连接
+            jedis.close();
+        }
+        System.out.println("redis每秒操作：" + i + "次");// 打印1秒内对Redis的操作次数
+    }
+
+    //使用Redis连接池
+    private static JedisPool testPool() {
+        JedisPoolConfig poolConfig = new JedisPoolConfig();
+
+        //最大空闲数
+        poolConfig.setMaxIdle(50);
+        //最大连接数
+        poolConfig.setMaxTotal(100);
+        //最大等待毫秒数
+        poolConfig.setMaxWaitMillis(20000);
+        //使用配置创建连接池
+        JedisPool pool = new JedisPool(poolConfig, "localhost");
+        //从连接池中获取单个连接
+        Jedis jedis = pool.getResource();
+        //如果需要密码
+        //jedis.auth("password");
+        return pool;
+
+
     }
 
     public static void testString() {
@@ -328,7 +376,7 @@ public class Main {
         System.out.println();
     }
 
-    private static void printList(RedisTemplate redisTemplate, String key) {
+    public static void printList(RedisTemplate redisTemplate, String key) {
         //链表长度
         Long size = redisTemplate.opsForList().size(key);
         //获取整个链表的值
@@ -336,7 +384,7 @@ public class Main {
         System.out.println(valueList);
     }
 
-    private static void printValueForHash(RedisTemplate redisTemplate, String key, String field) {
+    public static void printValueForHash(RedisTemplate redisTemplate, String key, String field) {
         //相当于hget命令
         Object value = redisTemplate.opsForHash().get(key, field);
         System.out.println(value);
@@ -347,6 +395,26 @@ public class Main {
         String i = (String) redisTemplate.opsForValue().get(key);
         System.out.println(i);
     }
+
+    //在Spring中使用Redis事务命令
+    public static void testTransaction() {
+        SessionCallback callBack = (SessionCallback) (RedisOperations ops) -> {
+            ops.multi();
+            ops.boundValueOps("key1").set("value1");
+            // 注意由于命令只是进入队列，而没有被执行，所以此处采用get命令，而value却返回为null
+            String value = (String) ops.boundValueOps("key1").get();
+            System.out.println("事务执行过程中，命令入队列，而没有被执行，所以value为空：value=" + value);
+            // 此时list会保存之前进入队列的所有命令的结果
+            List list = ops.exec();// 执行事务
+            // 事务结束后，获取value1
+            value = (String) redisTemplate.opsForValue().get("key1");
+            return value;
+        };
+        // 执行Redis的命令
+        String value = (String) redisTemplate.execute(callBack);
+        System.out.println(value);
+    }
+
 
 
 }
