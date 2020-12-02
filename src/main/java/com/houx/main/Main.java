@@ -13,6 +13,7 @@ import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
+import redis.clients.jedis.Pipeline;
 
 import java.io.UnsupportedEncodingException;
 import java.util.*;
@@ -38,7 +39,10 @@ public class Main {
         // testBList();
         // testSet();
         // testZset();
-        testTransaction();
+        // testTransaction();
+        // testJedisPipeline();
+        // testPipeline();
+        testPubSub();
     }
 
     public static void testJedis() {
@@ -415,6 +419,45 @@ public class Main {
         System.out.println(value);
     }
 
+    public static void testJedisPipeline() {
+        JedisPool pool = testPool();
+        Jedis jedis = pool.getResource();
+        long start = System.currentTimeMillis();
+        // 开启流水线
+        Pipeline pipeline = jedis.pipelined();
+        // 这里测试10万条的读写2个操作
+        for (int i = 0; i < 100000; i++) {
+            int j = i + 1;
+            pipeline.set("pipeline_key_" + j, "pipeline_value_" + j);
+            pipeline.get("pipeline_key_" + j);
+        }
+        // pipeline.sync();//这里只执行同步，但是不返回结果
+        // pipeline.syncAndReturnAll();将返回执行过的命令返回的List列表结果
+        List result = pipeline.syncAndReturnAll();
+        long end = System.currentTimeMillis();
+        // 计算耗时
+        System.err.println("耗时：" + (end - start) + "毫秒");
+    }
 
+    public static void testPipeline(){
+        SessionCallback callback = (SessionCallback) (RedisOperations ops)->{
+            for (int i = 0;i <100000;i++){
+                int j = i + 1;
+                ops.boundValueOps("pipeline_key_" + j).set("pipeline_value_"+j);
+                ops.boundValueOps("pipeline_key_"+j).get();
+            }
+            return null;
+        };
+        long start = System.currentTimeMillis();
+        //执行Redis的流水线命令
+        List list = redisTemplate.executePipelined(callback);
+        Long end = System.currentTimeMillis();
+        System.err.println(end - start);
+    }
+
+    public static void testPubSub(){
+        String channel = "chat";
+        redisTemplate.convertAndSend(channel,"I am coming,BeiJin");
+    }
 
 }
