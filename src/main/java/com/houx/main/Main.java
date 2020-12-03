@@ -1,5 +1,7 @@
 package com.houx.main;
 
+import com.houx.pojo.Role;
+import jdk.internal.util.xml.impl.Input;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 import org.springframework.data.redis.connection.RedisListCommands;
@@ -10,12 +12,14 @@ import org.springframework.data.redis.core.RedisOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.SessionCallback;
 import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.serializer.JdkSerializationRedisSerializer;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 import redis.clients.jedis.Pipeline;
 
-import java.io.UnsupportedEncodingException;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -43,8 +47,10 @@ public class Main {
         // testJedisPipeline();
         // testPipeline();
         // testPubSub();
-        testExpire();
-
+        // testExpire();
+        // testLuaScript();
+        //testRedisScript();
+        testLuaFile();
 
     }
 
@@ -463,7 +469,6 @@ public class Main {
         redisTemplate.convertAndSend(channel, "I am coming,BeiJin");
     }
 
-
     public static void testExpire() {
         redisTemplate.execute((RedisOperations ops) -> {
             ops.boundValueOps("key1").set("value1");
@@ -481,6 +486,94 @@ public class Main {
             ops.expireAt("key", date);
             return null;
         });
+    }
+
+    public static void testLuaScript() {
+        Jedis jedis = (Jedis) redisTemplate.getConnectionFactory().getConnection().getNativeConnection();
+        //执行简单的脚本
+        String helloJava = (String) jedis.eval("return 'hello java'");
+        System.out.println(helloJava);
+        //执行带参数的脚本
+        jedis.eval("redis.call('set',KEYS[1],AVG[1])", 1, "lua-key", "lua-value");
+        String luaKey = jedis.get("lua-key");
+        System.out.println(luaKey);
+        //缓存脚本,返回shal签名标识
+        String shal = jedis.scriptLoad("redis.call('set',KEYS[1],ARGV[1])");
+        //通过标识执行脚本
+        jedis.evalsha(shal, 1, new String[]{"sha-key", "sha-val"});
+        //获取执行脚本后的数据
+        String shaVal = jedis.get("sha-key");
+        System.out.println(shaVal);
+        //关闭连接
+        jedis.close();
+    }
+
+    public static void testRedisScript() {
+        //定义默认脚本封装类
+        DefaultRedisScript<Role> redisScript = new DefaultRedisScript<Role>();
+        //设置脚本
+        redisScript.setScriptText("redis.call('set',KEYS[1],ARGV[1]) return redis.call('get',KEYS[1])");
+        //定义操作的key列表
+        List<String> keyList = new ArrayList<String>();
+        keyList.add("role1");
+        //需要序列化保存和读取的对象
+        Role role = new Role();
+        role.setId(1L);
+        role.setRoleName("role_name_1");
+        role.setNote("note_1");
+        //获得标识字符串
+        String shal = redisScript.getSha1();
+        System.out.println(shal);
+        //设置返回结果类型，如果没有这句话，结果返回空
+        redisScript.setResultType(Role.class);
+        //定义序列化器
+        JdkSerializationRedisSerializer serializer = new JdkSerializationRedisSerializer();
+        //执行脚本
+        //第一个是RedisScript接口对象,第二个是参数序列化器
+        //第三个是结果序列化器,第四个是Redis的key列表，最后是参数列表
+        Role obj = (Role) redisTemplate.execute(redisScript, serializer, serializer, keyList, role);
+        //打印结果
+        System.out.println(obj);
+
+    }
+
+    //使用Java执行Redis脚本
+    public static void testLuaFile() {
+        //读入文件流
+        File file = new File("E:\\Java\\test.lua");
+        byte[] bytes = getFileToByte(file);
+        Jedis jedis = (Jedis) redisTemplate.getConnectionFactory().getConnection().getNativeConnection();
+        //发送文件二进制给Redis,这样Redis就会返回shal标识
+        byte[] shal = jedis.scriptLoad(bytes);
+        //使用返回的标识执行，其中第二个参数2，表示使用2个键
+        //而后面的字符串都转化为了二进制字节进行传输
+        Object obj = jedis.evalsha(shal, 2, "key1".getBytes(), "key2".getBytes(), "2".getBytes(), "4".getBytes());
+        System.out.println(obj);
+    }
+
+    /**
+     * 把文件转为二进制数组
+     * @param file
+     * @return
+     */
+    public static byte[] getFileToByte(File file) {
+        byte[] bytes = new byte[(int) file.length()];
+        try {
+            InputStream is = new FileInputStream(file);
+            ByteArrayOutputStream byteArrayInputStream = new ByteArrayOutputStream();
+            byte[] bb = new byte[2048];
+            int ch;
+            ch = is.read(bb);
+            while (ch != -1){
+                byteArrayInputStream.write(bb,0,ch);
+                ch = is.read(bb);
+            }
+            bytes = byteArrayInputStream.toByteArray();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return bytes;
     }
 
 }
